@@ -477,8 +477,14 @@ class DavosConfig(metaclass=SingletonConfig):
             Path(site.getuserbase(), 'bin', 'pip'),
             # some linux distros patch console script locations in weird
             # ways...
-            Path(site.getusersitepackages(), 'bin', 'pip')
+            Path(site.getusersitepackages(), 'bin', 'pip'),
             # ^note: in many cases, some of these will be duplicates
+            ## Windows pip locations/extensions for config
+            Path(sys.prefix, 'Scripts', 'pip.exe'),
+            Path(sys.exec_prefix, 'Scripts', 'pip.exe'),
+            Path(sys.executable).parent.joinpath('pip.exe'),
+            Path(sysconfig.get_path('scripts', f'{os.name}_user'), 'pip.exe'),
+            Path(site.getuserbase(), 'Scripts', 'pip.exe')
         ]
         for location in locations_to_check:
             if location.is_file():
