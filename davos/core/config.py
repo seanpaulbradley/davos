@@ -419,92 +419,34 @@ class DavosConfig(metaclass=SingletonConfig):
         Finds the pip executable that should be used to install smuggled
         packages that don't exist locally and returns its path.
 
-        If the notebook kernel lives inside some sort of virtual
-        environment, running `pip install <pkg>` in a subshell would
-        install <pkg> in the wrong place (see ContextLab/davos#10), so
-        shell commands used to install smuggled packages need to
-        reference the pip executable by its full path.
+        Finds the system python path.  Then, finds the pip associated
+        with that python executable.
 
-        Can pretty safely assume pip is installed -- been included with
-        all Python binary installers since v3.4. Could include a bunch
-        of additional fallback checks here if we can't find the
-        executable (check f'{site.getuserbase()}/bin/pip', see if pip
-        module is importable, fall back to f'{sys.executable} -m pip',
-        etc.) but not worth the extra complexity since this is
-        sufficient in nearly all cases... and in those where it's not,
-        the user has manually altered their environment in some way and
-        we *should* throw an error.
+        Terminates if OS not not Windows or Unix/Linux/Mac.
 
         Returns
         -------
         str
             absolute path to the default pip executable
         """
-        if self._environment == 'Colaboratory':
-            # Colab currently has a custom `pip` executable installed in
-            # a non-standard location, so check that (hard-coded) first,
-            # but still check the other locations after in case they
-            # ever update it.
-            expected_pip_exe_colab = '/usr/local/bin/pip'
-            if Path(expected_pip_exe_colab).is_file():
-                return expected_pip_exe_colab
-        # possible locations for pip executable in standard setups.
-        # These are based on how pip internally locates its executable
-        # in order to uninstall itself, plus a few additional
-        # possibilities to handle edge cases. See:
-        #   - https://github.com/pypa/pip/pull/10358
-        #   - https://discuss.python.org/t/proper-way-to-determine-install-location-of-console-scripts/7188
-        #   - https://github.com/pypa/pip/blob/3fe826c/src/pip/_internal/locations.py#L63-L91
-        #   - https://github.com/pypa/pip/blob/7ff4da6/src/pip/_internal/locations/__init__.py
-        locations_to_check = [
-            # normal install, newer pip versions
-            Path(sysconfig.get_path('scripts'), 'pip'),
-            # normal install, older pip versions
-            Path(sys.prefix, 'bin', 'pip'),
-            Path(sys.exec_prefix, 'bin', 'pip'),
-            # prefixes can be configured when building the interpreter,
-            # so also try checking another way on the off chance the
-            # user has an unusual/custom Python build
-            Path(sys.executable).with_name('pip'),
-            # check possible locations for user-level installation only
-            # if a "normal" interpreter-specific installation isn't
-            # found, since user install is non-default and generally a
-            # fallback solution for when user doesn't have access to the
-            # part of the filesystem where the interpreter lives
-            # user install, newer pip versions
-            Path(sysconfig.get_path('scripts', f'{os.name}_user'), 'pip'),
-            # user install, older pip versions
-            Path(site.getuserbase(), 'bin', 'pip'),
-            # some linux distros patch console script locations in weird
-            # ways...
-            Path(site.getusersitepackages(), 'bin', 'pip'),
-            # ^note: in many cases, some of these will be duplicates
-            ## Windows pip locations/extensions for config
-            Path(sys.prefix, 'Scripts', 'pip.exe'),
-            Path(sys.exec_prefix, 'Scripts', 'pip.exe'),
-            Path(sys.executable).parent.joinpath('pip.exe'),
-            Path(sysconfig.get_path('scripts', f'{os.name}_user'), 'pip.exe'),
-            Path(site.getuserbase(), 'Scripts', 'pip.exe')
-        ]
-        for location in locations_to_check:
-            if location.is_file():
-                return str(location)
-        if self._environment == 'Colaboratory':
-            # Can also fall back to checking $PATH in Colab, but can't
-            # assume this for a regular Jupyter notebook -- if the
-            # kernel is running in a virtual environment, this would
-            # give us the pip executable for the notebook server
-            # environment instead
-            pip_exe = shutil.which('pip')
-            if pip_exe is not None:
-                return pip_exe
-        raise DavosError(
-            "Could not locate a 'pip' executable in the current Python "
-            "environment. To ensure you have 'pip' installed in your "
-            "environment (and install it, if not), run\n\t"
-            f"`{sys.executable} -m ensurepip`"
-        )
+        python_dir = os.path.dirname(sys.executable)
 
+        if os.name == 'nt':  # Windows
+            pip_path = os.path.join(python_dir, 'Scripts', 'pip.exe')
+        elif os.name == 'posix':  # Unix/Linux/Mac
+            pip_path = os.path.join(python_dir, 'bin', 'pip')
+        else:
+            raise NotImplementedError(f"Unsupported OS: {os.name}")
+
+        if not os.path.isfile(pip_path):
+            raise DavosError(
+                "Could not locate a 'pip' executable in the current Python "
+                "environment. To ensure you have 'pip' installed in your "
+                "environment (and install it, if not), run\n\t"
+                f"`{sys.executable} -m ensurepip`"
+            )
+        else:
+            return pip_path
 
 def _block_greedy_ipython_completer():
     """
